@@ -49,6 +49,41 @@ namespace Backend.Controllers
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
+            // GET /api/reports/{id}/pdf
+            group.MapGet("/{id:guid}/pdf", (Guid id, bool? inline, IReportService reportService, IReportPdfService pdfService, HttpContext httpContext) =>
+            {
+                if (!reportService.TryGetReportData(id, out var trends) || trends == null)
+                {
+                    return Results.NotFound(new { message = "Report not found" });
+                }
+
+                try
+                {
+                    var pdfBytes = pdfService.GeneratePdf(trends);
+                    const string fileName = "AI-Trends-Report.pdf";
+                    const string contentType = "application/pdf";
+
+                    // Set Content-Disposition based on inline flag
+                    var disposition = (inline ?? false) ? "inline" : "attachment";
+                    httpContext.Response.Headers["Content-Disposition"] = $"{disposition}; filename=\"{fileName}\"";
+
+                    // Return file without filename in Results.File to avoid forcing attachment by framework
+                    return Results.File(pdfBytes, contentType);
+                }
+                catch (Exception ex)
+                {
+                    return Results.Problem(
+                        title: "PDF render failed",
+                        detail: ex.Message,
+                        statusCode: StatusCodes.Status500InternalServerError);
+                }
+            })
+            .WithSummary("Get a PDF version of the report")
+            .WithDescription("Generates and streams a PDF built from the same data as the .docx report. Use ?inline=true to view in-browser.")
+            .Produces(StatusCodes.Status200OK, contentType: "application/pdf")
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status500InternalServerError);
+
             return app;
         }
     }

@@ -11,6 +11,7 @@ namespace Backend.Services
 {
     /// <summary>
     /// Service that generates .docx reports and stores them in-memory.
+    /// Also retains the raw report data for subsequent PDF generation.
     /// </summary>
     public interface IReportService
     {
@@ -19,24 +20,37 @@ namespace Backend.Services
 
         // PUBLIC_INTERFACE
         bool TryGetReport(Guid id, out byte[]? content);
+
+        /// <summary>
+        /// Attempts to retrieve the raw trends used to generate a report.
+        /// </summary>
+        /// <param name="id">Report id.</param>
+        /// <param name="trends">Trends collection if found.</param>
+        /// <returns>true if found; otherwise false.</returns>
+        // PUBLIC_INTERFACE
+        bool TryGetReportData(Guid id, out IEnumerable<Trend>? trends);
     }
 
     /// <inheritdoc />
     public class ReportService : IReportService
     {
         private static readonly ConcurrentDictionary<Guid, byte[]> Reports = new();
+        private static readonly ConcurrentDictionary<Guid, List<Trend>> ReportTrends = new();
 
         /// <summary>
         /// Generates a .docx report from a list of trends and stores the bytes in-memory.
+        /// Also stores the underlying data for later PDF generation.
         /// </summary>
         /// <param name="trends">The trends to include in the report.</param>
         /// <returns>Guid of the generated report.</returns>
         // PUBLIC_INTERFACE
         public Guid GenerateReport(IEnumerable<Trend> trends)
         {
-            byte[] bytes = BuildDocx(trends);
+            var trendList = new List<Trend>(trends ?? new List<Trend>());
+            byte[] bytes = BuildDocx(trendList);
             var id = Guid.NewGuid();
             Reports[id] = bytes;
+            ReportTrends[id] = trendList;
             return id;
         }
 
@@ -56,6 +70,25 @@ namespace Backend.Services
             }
 
             content = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Attempts to retrieve the underlying trends used for a report.
+        /// </summary>
+        /// <param name="id">Report id.</param>
+        /// <param name="trends">Trends if found.</param>
+        /// <returns>true if found; otherwise false.</returns>
+        // PUBLIC_INTERFACE
+        public bool TryGetReportData(Guid id, out IEnumerable<Trend>? trends)
+        {
+            if (ReportTrends.TryGetValue(id, out var list))
+            {
+                trends = list;
+                return true;
+            }
+
+            trends = null;
             return false;
         }
 
